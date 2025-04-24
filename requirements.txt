@@ -17,3 +17,6 @@ requests>=2.31.0
 
 # PDF → text conversion
 pdfminer.six>=20201018
+
+# Testing
+pytest>=7.0.0

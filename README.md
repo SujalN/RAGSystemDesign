@@ -27,6 +27,8 @@ This repository implements a Retrieval-Augmented Generation (RAG) system for Sal
 - **Summarization**: Topic- or trend-based summaries
 - **Inline Citations**: Maps model citations back to chunk IDs and snippets
 - **Collapsible Snippets**: Streamlit expanders link to original PDF pages
+- **Interactive Filters**: Can filter for infromation from specific quarters or speakers
+- **Batch Embeddings**: Uses parallel workers to process transcripts faster
 
 ---
 
@@ -71,11 +73,15 @@ RAGSystemDesign/
 │   └── retriever.py        # Vector query
 │
 ├── api/
-│   └── server.py           # FastAPI app (QA, summarize, stats)
+│   └── server.py           # FastAPI app (QA & summarization)
 │
 ├── ui/
-    └── app.py              # Streamlit front-end
-
+│   └── app.py              # Streamlit front-end
+│
+└── tests/                  # Unit & integration tests
+    ├── test_retriever.py
+    ├── test_indexer.py
+    └── test_api.py
 ```
 
 ---

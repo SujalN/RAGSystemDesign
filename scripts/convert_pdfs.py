@@ -1,4 +1,3 @@
-# scripts/convert_pdfs.py
 import os
 from pathlib import Path
 from pdfminer.high_level import extract_text
