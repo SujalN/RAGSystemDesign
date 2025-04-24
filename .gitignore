@@ -1,0 +1,9 @@
+# virtual environment
+.venv/
+# Python
+__pycache__/
+*.py[cod]
+# environment
+.env
+# local data chunks
+data/chunks/

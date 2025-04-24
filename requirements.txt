@@ -1,0 +1,19 @@
+# OpenAI & embeddings
+openai>=1.0.0
+
+# Pinecone vector DB client
+pinecone-client>=2.1.0
+
+# Environment variable loader
+python-dotenv>=1.0.0
+
+# API framework
+fastapi>=0.95.0
+uvicorn[standard]>=0.20.0
+
+# Front-end
+streamlit>=1.25.0
+requests>=2.31.0
+
+# PDF → text conversion
+pdfminer.six>=20201018
