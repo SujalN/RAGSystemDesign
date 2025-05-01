@@ -26,8 +26,6 @@ This repository implements a Retrieval-Augmented Generation (RAG) system for Sal
 - **Question Answering**: Concise answers with inline citations (`[1]`, `[2]`, etc.)
 - **Summarization**: Topic- or trend-based summaries
 - **Inline Citations**: Maps model citations back to chunk IDs and snippets
-- **Collapsible Snippets**: Streamlit expanders link to original PDF pages
-- **Interactive Filters**: Can filter for infromation from specific quarters or speakers
 - **Batch Embeddings**: Uses parallel workers to process transcripts faster
 
 ---

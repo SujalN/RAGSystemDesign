@@ -11,8 +11,8 @@ from api.server import app
 client = TestClient(app)
 
 @pytest.mark.parametrize("endpoint,payload", [
-    ("/qa", {"q":"test", "quarters":[], "speakers":[]}),
-    ("/summarize", {"q":"test", "quarters":[], "speakers":[]})
+    ("/qa", {"q":"test"}),
+    ("/summarize", {"q":"test"})
 ])
 def test_endpoints_return_200(endpoint, payload):
     response = client.post(endpoint, json=payload)
