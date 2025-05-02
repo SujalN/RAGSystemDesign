@@ -20,26 +20,26 @@ from langchain_pinecone import PineconeVectorStore
 logging.getLogger("pdfminer").setLevel(logging.ERROR)
 logging.getLogger("pypdf").setLevel(logging.ERROR)
 
-# ── Env vars ------------------------------------------------------------------
+# Environment variables
 load_dotenv()
 API_KEY = os.getenv("PINECONE_API_KEY")
 INDEX   = os.getenv("PINECONE_INDEX")
 DATA    = "data/raw"
 
-# ── Pinecone client & index ---------------------------------------------------
+# Pinecone client and index
 pc = Pinecone(api_key=API_KEY)
 index = pc.Index(INDEX)
 
-# ── Load PDFs -----------------------------------------------------------------
+# Load PDFs
 loader = DirectoryLoader(DATA, glob="*.pdf", loader_cls=PyPDFLoader)
 docs   = loader.load()
 
-# ── Split into chunks ---------------------------------------------------------
+# Split into chunks
 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
 chunks   = splitter.split_documents(docs)
 print(f"Split into {len(chunks)} chunks")
 
-# ── Embed & upsert in batches -------------------------------------------------
+# Embed and upsert in batches
 embeddings = OpenAIEmbeddings()
 vectorstore = PineconeVectorStore(index_name=INDEX, embedding=embeddings, pinecone_api_key=API_KEY)
 

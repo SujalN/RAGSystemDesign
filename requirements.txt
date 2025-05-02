@@ -1,8 +1,14 @@
+# General
+pathlib
+typing
+
 # Core LLM stack
 openai
-langchain-openai
-langchain-community
-langchain-pinecone
+langchain
+langchain_openai
+langchain_community
+langchain_pinecone
+langchain_openai
 
 # Vector database
 pinecone
@@ -18,5 +24,7 @@ PyPDF2
 
 # Utilities
 python-dotenv
+dotenv
 tqdm
 pydantic
+logging

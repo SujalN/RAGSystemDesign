@@ -7,13 +7,12 @@ import requests
 import streamlit as st
 from dotenv import load_dotenv
 
-# ── Config --------------------------------------------------------------------
+# Configuration
 load_dotenv()
 API_URL = os.getenv("API_URL", "http://localhost:8000")
-
 st.set_page_config(page_title="Salesforce Earnings Chat", page_icon=":cloud:", layout="wide")
 
-# Title + clear‑chat button aligned --------------------------------------------
+# Title and clear‑chat button
 title_col, btn_col = st.columns([0.85, 0.15])
 with title_col:
     st.title("💬 Salesforce Earnings RAG Chat")
@@ -22,17 +21,17 @@ with btn_col:
         st.session_state.history = []
         (st.rerun if hasattr(st, "rerun") else st.experimental_rerun)()
 
-# ── Session state -------------------------------------------------------------
+# Session state
 if "history" not in st.session_state:
     st.session_state.history = []   # [(user, assistant)]
 
-# ── Helper to call API --------------------------------------------------------
+# Helper to call API
 def chat_backend(question: str, history):
     resp = requests.post(f"{API_URL}/chat", json={"question": question, "history": history}, timeout=120)
     resp.raise_for_status()
     return resp.json()
 
-# ── Render existing conversation (hide old sources) ---------------------------
+# Render existing conversation
 if st.session_state.history:
     *earlier, (last_user, last_bot) = st.session_state.history
     for u, a in earlier:
@@ -44,7 +43,7 @@ if st.session_state.history:
 else:
     prev_assistant = None
 
-# ── Chat input ----------------------------------------------------------------
+# Chat input
 user_input = st.chat_input("Ask about Salesforce earnings…")
 
 if user_input:
@@ -63,7 +62,7 @@ if user_input:
             prev_assistant.empty()
             prev_assistant.write(last_bot)
 
-        # New assistant answer + top‑4 sources
+        # New assistant answer and top‑4 sources
         assistant = st.chat_message("assistant")
         assistant.write(resp["answer"])
         if resp["citations"]:
