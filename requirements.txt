@@ -1,24 +1,22 @@
-# OpenAI & embeddings
-openai>=1.0.0
+# Core LLM stack
+openai
+langchain-openai
+langchain-community
+langchain-pinecone
 
-# Pinecone vector DB client
-pinecone-client>=2.1.0
+# Vector database
+pinecone
 
-# Environment variable loader
-python-dotenv>=1.0.0
+# Web / API / UI
+fastapi
+uvicorn[standard]
+streamlit
+requests
 
-# API framework
-fastapi>=0.95.0
-uvicorn[standard]>=0.20.0
+# PDF parsing
+PyPDF2
 
-# Front-end
-streamlit>=1.25.0
-requests>=2.31.0
-
-# PDF → text conversion
-pdfminer.six>=20201018
-pdfplumber
-pandas
-
-# Testing
-pytest>=7.0.0
+# Utilities
+python-dotenv
+tqdm
+pydantic

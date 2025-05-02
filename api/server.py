@@ -1,111 +1,140 @@
+"""
+FastAPI back‑end that exposes a conversational RAG endpoint
+against Salesforce earnings‑call PDFs stored in Pinecone.
+"""
+
+import logging
 import os
 import re
+from pathlib import Path
+from typing import List, Tuple
+
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from openai import OpenAI
-from retriever.retriever import Retriever
+from pinecone import Pinecone
 
+from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+from langchain_pinecone import PineconeVectorStore
+from langchain.chains import ConversationalRetrievalChain
+from langchain.prompts import (
+    ChatPromptTemplate,
+    SystemMessagePromptTemplate,
+    HumanMessagePromptTemplate,
+)
+
+# ── Silence noisy PDF libraries ────────────────────────────────────────────────
+logging.getLogger("pdfminer").setLevel(logging.ERROR)
+logging.getLogger("pypdf").setLevel(logging.ERROR)
+
+# ── Environment variables ------------------------------------------------------
 load_dotenv()
+PC_API_KEY = os.getenv("PINECONE_API_KEY")
+PC_ENV     = os.getenv("PINECONE_ENV")
+PC_INDEX   = os.getenv("PINECONE_INDEX")
 
-# Initialize OpenAI client
-openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# ── Vector store ---------------------------------------------------------------
+pc_client  = Pinecone(api_key=PC_API_KEY)
+embeddings = OpenAIEmbeddings()
+vectorstore = PineconeVectorStore(
+    index_name=PC_INDEX,
+    embedding=embeddings,
+    pinecone_api_key=PC_API_KEY
+)
 
-# Initialize Retriever (wraps Pinecone + embeddings)
-retriever = Retriever(top_k=5)
+# ── Prompt templates -----------------------------------------------------------
+SYSTEM_PROMPT = (
+    "You are an expert analyst of Salesforce earnings calls. "
+    "Answer ONLY from the provided snippets and cite each fact like [1]. "
+    "For greetings or thanks, reply politely without citations."
+)
+USER_PROMPT = (
+    "Snippets:\n{context}\n\n"
+    "Question: {question}\n"
+    "Answer concisely with inline citations."
+)
+prompt = ChatPromptTemplate.from_messages(
+    [
+        SystemMessagePromptTemplate.from_template(SYSTEM_PROMPT),
+        HumanMessagePromptTemplate.from_template(USER_PROMPT),
+    ]
+)
 
-app = FastAPI()
+# ── Retrieval‑augmented conversational chain ----------------------------------
+llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0)
+conv_chain = ConversationalRetrievalChain.from_llm(
+    llm=llm,
+    retriever=vectorstore.as_retriever(search_kwargs={"k": 8}),
+    combine_docs_chain_kwargs={"prompt": prompt},
+    return_source_documents=True,
+)
 
-class QARequest(BaseModel):
-    # Incoming payload for Q&A requests.
-    q: str
+# ── FastAPI app & schema -------------------------------------------------------
+app = FastAPI(title="Salesforce Earnings RAG Chat")
 
-class SummarizeRequest(BaseModel):
-    # Incoming payload for summarization requests.
-    q: str
-    
-def extract_citation_indices(text: str) -> list[int]:
-    # From output containing inline citations, return a sorted list of unique integer indices
-    found = re.findall(r"\[(\d+)\]", text)
-    return sorted({int(n) for n in found})
+class ChatRequest(BaseModel):
+    question: str
+    history: List[Tuple[str, str]] = []
 
-@app.post("/qa")
-async def qa_endpoint(body: QARequest):
+class ChatResponse(BaseModel):
+    answer: str
+    history: List[Tuple[str, str]]
+    citations: List[dict]
+
+# ── Helpers: casual detector & meta‑answers -----------------------------------
+CASUAL_RE = re.compile(r"^(thanks?|thank you|cool|great|awesome|wow|ok|okay)\W*$", re.I)
+def is_casual(msg: str) -> bool:
+    return bool(CASUAL_RE.match(msg.strip()))
+
+def count_pdfs() -> int:
+    return len(list(Path("data/raw").glob("*.pdf")))
+
+def pages_in_latest() -> int:
+    pdfs = sorted(Path("data/raw").glob("*.pdf"))
+    if not pdfs:
+        return 0
+    import PyPDF2
+    return len(PyPDF2.PdfReader(str(pdfs[-1])).pages)
+
+META_QUERIES = {
+    r"how many (earnings )?call documents": lambda: (f"I have **{count_pdfs()}** earnings‑call documents indexed.", []),
+    r"how many pages.*most recent":          lambda: (f"The most recent call PDF has **{pages_in_latest()}** pages.", []),
+}
+def maybe_meta_answer(q: str):
+    for pat, func in META_QUERIES.items():
+        if re.search(pat, q.lower()):
+            return func()
+    return None
+
+# ── /chat endpoint -------------------------------------------------------------
+@app.post("/chat", response_model=ChatResponse)
+def chat(req: ChatRequest):
+    """
+    1. Greetings / thanks  → polite reply.
+    2. Meta queries        → programmatic answer.
+    3. Otherwise           → RAG answer with citations.
+    """
     try:
-        # Fetch relevant chunks (id, score, snippet)
-        docs = retriever.retrieve(body.q)
-        
-        # Build context section of the prompt
-        contexts = "\n\n".join(f"[{i}] {text}"
-                               for i, (_id,_sc,text) in enumerate(docs))
-        
-        # Compose prompt
-        prompt = (
-            "You are an expert on Salesforce earnings calls.\n"
-            "Use the following snippets to answer the question.\n"
-            "Annotate each fact with inline citations like [1], [2], etc., "
-            "where the number refers to the snippet index.\n\n"
-            f"{contexts}\n\n"
-            f"Question: {body.q}\n"
-            "Answer concisely, with inline citations."
-        )
-        
-        # Call LLM
-        resp = openai_client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role":"system","content":"You are a helpful assistant."},
-                {"role":"user",  "content":prompt}
-            ]
-        )
-        answer = resp.choices[0].message.content
-        
-        # Extract and map citations back to chunks
-        indices = extract_citation_indices(answer)
+        if is_casual(req.question):
+            polite = "You're welcome! Anything else I can help you with?"
+            new_hist = req.history + [(req.question, polite)]
+            return ChatResponse(answer=polite, history=new_hist, citations=[])
+
+        meta = maybe_meta_answer(req.question)
+        if meta:
+            answer, cites = meta
+            new_hist = req.history + [(req.question, answer)]
+            return ChatResponse(answer=answer, history=new_hist, citations=cites)
+
+        result = conv_chain({"question": req.question, "chat_history": req.history})
+        answer = result["answer"]
+        docs   = result["source_documents"]
         citations = [
-            {
-                "index": i, 
-                "chunk_id": docs[i][0], 
-                "snippet": docs[i][2]
-             }
-            for i in indices if i < len(docs)
+            {"source": d.metadata.get("source"), "page": d.metadata.get("page_number"), "content": d.page_content[:500]}
+            for d in docs
         ]
-        return {"answer": answer, "citations": citations}
-
-    except Exception as e:
-        # Bubble up any error as a 500 with the message
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.post("/summarize")
-async def summarize_endpoint(body: SummarizeRequest):
-    try:
-        docs = retriever.retrieve(body.q)
-        contexts = "\n\n".join(f"[{i}] {text}"
-                               for i, (_id,_sc,text) in enumerate(docs))
-        prompt = (
-            "You are an expert on Salesforce earnings calls.\n"
-            "Summarize the key points about the topic below. "
-            "Annotate each summarized point with inline citations like [1], [2], etc., "
-            "where the number refers to the snippet index.\n\n"
-            f"{contexts}\n\n"
-            f"Topic: {body.q}\n"
-            "Provide a concise summary with inline citations."
-        )
-        resp = openai_client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
-                {"role":"system","content":"You are a helpful assistant."},
-                {"role":"user",  "content":prompt}
-            ]
-        )
-        summary = resp.choices[0].message.content
-        cited = sorted({int(n) for n in re.findall(r"\[(\d+)\]", summary)})
-        citations = [
-            {"index": i, "chunk_id": docs[i][0], "snippet": docs[i][2]}
-            for i in cited if i < len(docs)
-        ]
-        return {"summary": summary, "citations": citations}
+        new_hist = req.history + [(req.question, answer)]
+        return ChatResponse(answer=answer, history=new_hist, citations=citations)
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

@@ -1,82 +1,73 @@
+"""
+Streamlit front‑end for Salesforce Earnings RAG Chat.
+"""
+
 import os
 import requests
 import streamlit as st
+from dotenv import load_dotenv
 
+# ── Config --------------------------------------------------------------------
+load_dotenv()
 API_URL = os.getenv("API_URL", "http://localhost:8000")
 
-st.set_page_config(
-    page_title="Salesforce Earnings RAG",
-    page_icon=":cloud:",
-    layout="wide"
-)
+st.set_page_config(page_title="Salesforce Earnings Chat", page_icon=":cloud:", layout="wide")
 
-def run_query_api(endpoint: str, text: str) -> dict:
-    # Send a POST to the given endpoint with the user's query
+# Title + clear‑chat button aligned --------------------------------------------
+title_col, btn_col = st.columns([0.85, 0.15])
+with title_col:
+    st.title("💬 Salesforce Earnings RAG Chat")
+with btn_col:
+    if st.button("🗑️ Clear chat", use_container_width=True):
+        st.session_state.history = []
+        (st.rerun if hasattr(st, "rerun") else st.experimental_rerun)()
+
+# ── Session state -------------------------------------------------------------
+if "history" not in st.session_state:
+    st.session_state.history = []   # [(user, assistant)]
+
+# ── Helper to call API --------------------------------------------------------
+def chat_backend(question: str, history):
+    resp = requests.post(f"{API_URL}/chat", json={"question": question, "history": history}, timeout=120)
+    resp.raise_for_status()
+    return resp.json()
+
+# ── Render existing conversation (hide old sources) ---------------------------
+if st.session_state.history:
+    *earlier, (last_user, last_bot) = st.session_state.history
+    for u, a in earlier:
+        st.chat_message("user").write(u)
+        st.chat_message("assistant").write(a)
+    st.chat_message("user").write(last_user)
+    prev_assistant = st.chat_message("assistant")
+    prev_assistant.write(last_bot)
+else:
+    prev_assistant = None
+
+# ── Chat input ----------------------------------------------------------------
+user_input = st.chat_input("Ask about Salesforce earnings…")
+
+if user_input:
+    st.chat_message("user").write(user_input)
+
     try:
-        r = requests.post(f"{API_URL}/{endpoint}", json={"q": text})
-        r.raise_for_status()
-        return r.json()
+        resp = chat_backend(user_input, st.session_state.history)
     except Exception as e:
-        return {"error": str(e)}
+        st.error(f"API error: {e}")
+    else:
+        # Update history
+        st.session_state.history = resp["history"]
 
-tabs = st.tabs(["💬 Q&A", "📋 Summarize"])
+        # Freeze previous assistant bubble (text only)
+        if prev_assistant:
+            prev_assistant.empty()
+            prev_assistant.write(last_bot)
 
-# Q&A tab
-with tabs[0]:
-    st.subheader("Ask a question")
-    
-    # Text input for Q&A queries
-    query_qa = st.text_input(
-        "Enter your question…",
-        key="query_qa",
-        placeholder="What risks did Salesforce highlight in the earnings calls?"
-    )
-    
-    # Button to trigger the Q&A call
-    if st.button("Run Q&A", key="run_qa"):
-        resp = run_query_api("qa", query_qa)
-        if "error" in resp:
-            st.error(resp["error"])
-        else:
-            st.markdown("**Answer:**")
-            st.write(resp["answer"])
-            st.markdown("**Sources:**")
-            for c in resp.get("citations", []):
-                idx, chunk_id, snippet = c["index"], c["chunk_id"], c["snippet"]
-                
-                # Parse file name and page number from the chunk_id
-                pdf, pg = chunk_id.split("_chunk")[0], int(chunk_id.split("_chunk")[1])
-                
-                # Use an expander so the snippet is collapsible
-                with st.expander(f"[{idx}] {pdf}, p.{pg+1}"):
-                    st.write(snippet)
-
-# Summarize tab
-with tabs[1]:
-    st.subheader("Generate a summary")
-    
-    # Text input for summarization queries
-    query_sum = st.text_input(
-        "Enter topic or keyword…",
-        key="query_sum",
-        placeholder="e.g. risks over time"
-    )
-    
-    # Button to trigger the summarization call
-    if st.button("Run Summarize", key="run_sum"):
-        resp = run_query_api("summarize", query_sum)
-        if "error" in resp:
-            st.error(resp["error"])
-        else:
-            st.markdown("**Summary:**")
-            st.write(resp["summary"])
-            st.markdown("**Sources:**")
-            for c in resp.get("citations", []):
-                idx, chunk_id, snippet = c["index"], c["chunk_id"], c["snippet"]
-                
-                # Same parsing logic for chunk_id as above
-                pdf, pg = chunk_id.split("_chunk")[0], int(chunk_id.split("_chunk")[1])
-                url = f"/static/{pdf}.pdf#page={pg+1}"
-                with st.expander(f"[{idx}] {pdf}, p.{pg+1}"):
-                    st.write(snippet)
-
+        # New assistant answer + top‑4 sources
+        assistant = st.chat_message("assistant")
+        assistant.write(resp["answer"])
+        if resp["citations"]:
+            assistant.markdown("**Sources:**")
+            for i, c in enumerate(resp["citations"][:4], start=1):
+                with st.expander(f"[{i}] {c['source']} (p.{c.get('page')})"):
+                    st.write(c["content"])

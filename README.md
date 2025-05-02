@@ -1,49 +1,54 @@
-# Salesforce Earnings RAG
+# Salesforce Earnings RAG
 
-This repository implements a Retrieval-Augmented Generation (RAG) system for Salesforce earnings call transcripts. It provides Question & Answer (Q&A) and summarization capabilities via a simple Conversational UI.
+Conversational Retrieval‑Augmented Generation for Salesforce earnings‑call transcripts.
+Ask questions, get cited answers or summaries, and explore source snippets - all from a single chat UI.
 
 ---
 
 ## Table of Contents
 
-- [Features](#features)
-- [Architecture](#architecture)
-- [Prerequisites](#prerequisites)
-- [Project Structure](#project-structure)
-- [Setup](#setup)
-  - [1. Clone & Environment](#1-clone--environment)
-  - [2. Install Dependencies](#2-install-dependencies)
-  - [3. Environment Variables](#3-environment-variables)
-  - [4. Data Preparation](#data-preparation)
-  - [5. Indexing Chunks](#indexing-chunks)
-  - [6. Running the API](#running-the-api)
-  - [7. Running the UI](#running-the-ui)
+* [Features](#features)
+* [Architecture](#architecture)
+* [Prerequisites](#prerequisites)
+* [Project Structure](#project-structure)
+* [Setup](#setup)
+
+  * [1. Clone & Environment](#1-clone--environment)
+  * [2. Install Dependencies](#2-install-dependencies)
+  * [3. Environment Variables](#3-environment-variables)
+  * [4. Build the Index](#4-build-the-index)
+  * [5. Run the API](#5-run-the-api)
+  * [6. Run the UI](#6-run-the-ui)
+* [Usage Examples](#usage-examples)
 
 ---
 
 ## Features
 
-- **Question Answering**: Concise answers with inline citations (`[1]`, `[2]`, etc.)
-- **Summarization**: Topic- or trend-based summaries
-- **Inline Citations**: Maps model citations back to chunk IDs and snippets
-- **Batch Embeddings**: Uses parallel workers to process transcripts faster
+* **Conversational QA** – multi‑turn chat with memory
+* **Summarization** – concise topic or trend summaries
+* **Inline Citations** – facts cited like `[1]`; UI shows up to 4 snippets
+* **Meta Queries** – programmatic answers (doc count, page count)
+* **Polite Small‑Talk** – graceful replies to “Thanks”, “Hi”, etc.
+* **Clear Chat** – one‑click history reset
 
 ---
 
 ## Architecture
 
-1. **Data Ingestion & Chunking**: Convert PDFs to text, clean, and split into overlapping chunks
-2. **Embeddings & Vector Store**: Compute embeddings with OpenAI (`text-embedding-ada-002`) and upsert into Pinecone
-3. **Retrieval Layer**: Embed queries and k-NN search against Pinecone with metadata filters
-4. **LLM Generation**: Use GPT-4 to answer or summarize with retrieved snippets and inline citations
-5. **Conversational UI**: Streamlit app to drive Q&A and summarization
+1. **Ingest & Chunk** – PDFs → overlapping 1 000‑token chunks
+2. **Embeddings + Store** – OpenAI embeddings upserted to Pinecone
+3. **Retriever** – k‑NN search (k = 8) with metadata
+4. **LLM Chain** – GPT‑4o‑mini combines snippets, cites sources
+5. **FastAPI** – `/chat` endpoint handles memory + meta + RAG
+6. **Streamlit UI** – chat interface with collapsible source snippets
 
 ---
 
 ## Prerequisites
 
-- Python 3.8+
-- Dependencies in requirements.txt
+* Python 3.9+
+* Keys for **OpenAI** and **Pinecone**
 
 ---
 
@@ -51,112 +56,101 @@ This repository implements a Retrieval-Augmented Generation (RAG) system for Sal
 
 ```bash
 RAGSystemDesign/
-├── .env.example            # Example environment variables
-├── .gitignore
-├── README.md
-├── requirements.txt
-│
-├── data/
-│   ├── raw/                # Source PDF & extracted .txt
-│   └── chunks/             # Chunked text files
-│
-├── scripts/
-│   ├── convert_pdfs.py     # PDF → text extraction
-│   └── prepare_chunks.py   # Text cleaning & chunking
-│
-├── embeddings/
-│   └── indexer.py          # Compute embeddings & upsert to Pinecone
-│
-├── retriever/
-│   └── retriever.py        # Vector query
-│
 ├── api/
-│   └── server.py           # FastAPI app (QA & summarization)
-│
+│   └── server.py             # FastAPI back‑end
 ├── ui/
-│   └── app.py              # Streamlit front-end
-│
-└── tests/                  # Unit & integration tests
-    ├── test_retriever.py
-    ├── test_indexer.py
-    └── test_api.py
+│   └── app.py                # Streamlit chat front‑end
+├── scripts/
+│   └── build_index.py        # Ingest → chunk → embed → upsert
+├── data/
+│   └── raw/                  # Store earnings call PDFs
+├── archive/
+│   └── *                     # Deprecated scripts from old design
+├── requirements.txt
+├── Architecture_Diagram.pdf  # Visual representation of system design
+├── .env.example
+├── docker-compose.yml        # Can be used in future for containerization + deployment
+└── .gitignore
 ```
 
 ---
 
 ## Setup
 
-### 1. Clone & Environment
+### 1. Clone & Environment
 
 ```bash
-git clone https://github.com/your-org/salesforce-rag.git
+git clone https://github.com/SujalN/RAGSystemDesign.git
 cd RAGSystemDesign
-python3 -m venv .venv
-source .venv/bin/activate
+python -m venv .venv
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 ```
 
-### 2. Install Dependencies
+### 2. Install Dependencies
 
 ```bash
 pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 3. Environment Variables
-
-Copy the example and fill in your keys:
+### 3. Environment Variables
 
 ```bash
 cp .env.example .env
-# Edit .env with your OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_ENV, PINECONE_INDEX
+# fill in:
+# OPENAI_API_KEY=
+# PINECONE_API_KEY=
+# PINECONE_ENV=
+# PINECONE_INDEX=
+# API_URL=http://localhost:8000
 ```
 
 ---
 
-## 4. Data Preparation
+### 4. Build the Index
 
-Convert PDFs to text and chunk:
+Place PDFs in `data/raw/` and run:
 
 ```bash
-python scripts/convert_pdfs.py    # Extract text files in data/raw/
-python scripts/prepare_chunks.py  # Create overlapping chunks in data/chunks/
+python scripts/build_index.py
 ```
+
+*Splits files → embeds → upserts to Pinecone in 50‑vector batches.*
 
 ---
 
-## 5. Indexing Chunks
-
-Upsert all chunks into Pinecone (batchable):
-
-```bash
-python embeddings/indexer.py
-```
-
----
-
-## 6. Running the API
-
-Start the FastAPI server (port 8000):
+### 5. Run the API
 
 ```bash
 uvicorn api.server:app --reload --port 8000
 ```
 
-### 7. Endpoints
-
-- `POST /qa` — Q&A with inline citations
-- `POST /summarize` — Summarize key points
+*Endpoint:* `POST /chat` – body `{"question": "...", "history": [...]}`
 
 ---
 
-## 8. Running the UI
-
-Launch the Streamlit app (port 8501):
+### 6. Run the UI
 
 ```bash
 streamlit run ui/app.py
 ```
 
-Open your browser to `http://localhost:8501` to interact.
+Navigate to [http://localhost:8501](http://localhost:8501).
 
 ---
+
+## Usage Examples
+
+```text
+You: How many earnings‑call documents do you have indexed?
+Bot: I have 10 earnings‑call documents indexed.
+
+You: What risks has Salesforce highlighted over time?
+Bot: Salesforce repeatedly cited macro‑economic uncertainty [1] and lengthening sales cycles [2]…
+
+You: Thanks!
+Bot: You're welcome! Anything else I can help you with?
+```
+
+Click an expander under **Sources** to view the cited snippet.
+Press **🗑️ Clear chat** in the **Menu** to start fresh.
