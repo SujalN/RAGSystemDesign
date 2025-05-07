@@ -1,6 +1,6 @@
 """
-FastAPI back‑end that exposes a conversational RAG endpoint
-against Salesforce earnings‑call PDFs stored in Pinecone.
+FastAPI backend that exposes a conversational RAG endpoint
+against Salesforce earnings call PDFs stored in Pinecone.
 """
 
 import os
@@ -56,7 +56,7 @@ prompt = ChatPromptTemplate.from_messages(
 )
 
 # Retrieval‑augmented conversational chain
-llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0.1) # Low temperature for more deterministic results
+llm = ChatOpenAI(model_name="gpt-4o-mini", temperature=0) # Low temperature for more deterministic results
 conv_chain = ConversationalRetrievalChain.from_llm(
     llm=llm,
     retriever=vectorstore.as_retriever(search_kwargs={"k": 8}), # Return top 8 most relevant snippets

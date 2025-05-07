@@ -15,7 +15,7 @@ st.set_page_config(page_title="Salesforce Earnings Chat", page_icon=":cloud:", l
 # Title and clear‑chat button
 title_col, btn_col = st.columns([0.85, 0.15])
 with title_col:
-    st.title("💬 Salesforce Earnings RAG Chat")
+    st.title("💬 Salesforce Earnings Chat")
 with btn_col:
     if st.button("🗑️ Clear chat", use_container_width=True):
         st.session_state.history = []
